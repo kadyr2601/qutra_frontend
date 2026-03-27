@@ -84,10 +84,10 @@ export default function PlaygroundPage() {
   const [copied, setCopied] = useState<string | null>(null)
   const [uploadedFile, setUploadedFile] = useState<File | null>(null)
   const [showAdvanced, setShowAdvanced] = useState(false)
-  const [scopeUserId, setScopeUserId] = useState("")
-  const [scopeAgentId, setScopeAgentId] = useState("")
-  const [scopeRunId, setScopeRunId] = useState("")
-  const [customMetadata, setCustomMetadata] = useState<{key: string, value: string}[]>([])
+  const [customMetadata, setCustomMetadata] = useState<{ key: string, value: string }[]>([
+    { key: "example_metadata", value: "12345" },
+    { key: "example_department", value: "sales" }
+  ])
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   const handleEndpointChange = (endpointId: string) => {
@@ -98,6 +98,10 @@ export default function PlaygroundPage() {
     setStatusCode(null)
     setLatency(null)
     setUploadedFile(null)
+    setCustomMetadata([
+      { key: "example_metadata", value: "12345" },
+      { key: "example_department", value: "sales" }
+    ])
   }
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -117,33 +121,22 @@ export default function PlaygroundPage() {
   // Auto-inject context scope and dynamic metadata into request body when inputs change
   useEffect(() => {
     if (selectedEndpoint.method !== "POST") return
+
     try {
-      const parsed = JSON.parse(requestBody)
+      const parsed = JSON.parse(requestBody || "{}")
       let modified = false
-      
-      // Handle Core Scope
-      if (scopeUserId && parsed.user_id !== scopeUserId) { parsed.user_id = scopeUserId; modified = true }
-      if (!scopeUserId && parsed.user_id) { delete parsed.user_id; modified = true }
-      
-      if (scopeAgentId && parsed.agent_id !== scopeAgentId) { parsed.agent_id = scopeAgentId; modified = true }
-      if (!scopeAgentId && parsed.agent_id) { delete parsed.agent_id; modified = true }
-      
-      if (scopeRunId && parsed.run_id !== scopeRunId) { parsed.run_id = scopeRunId; modified = true }
-      if (!scopeRunId && parsed.run_id) { delete parsed.run_id; modified = true }
-      
+
       // Handle Custom Metadata
       const validMetaPairs = customMetadata.filter(m => m.key.trim() !== "")
       if (validMetaPairs.length > 0) {
         const newMeta: Record<string, any> = {}
         validMetaPairs.forEach(m => {
-          // Attempt to parse numbers/booleans if appropriate, else keep as string
           let val: any = m.value
           if (val === "true") val = true
           else if (val === "false") val = false
           else if (!isNaN(Number(val)) && val.trim() !== "") val = Number(val)
           newMeta[m.key.trim()] = val
         })
-        
         if (JSON.stringify(parsed.metadata) !== JSON.stringify(newMeta)) {
           parsed.metadata = newMeta
           modified = true
@@ -152,14 +145,14 @@ export default function PlaygroundPage() {
         delete parsed.metadata
         modified = true
       }
-      
+
       if (modified) {
         setRequestBody(JSON.stringify(parsed, null, 2))
       }
     } catch (e) {
       // ignore invalid json while user is typing
     }
-  }, [scopeUserId, scopeAgentId, scopeRunId, customMetadata, selectedEndpoint.method])
+  }, [customMetadata, selectedEndpoint.method])
 
   const addMetadataField = () => setCustomMetadata([...customMetadata, { key: "", value: "" }])
   const removeMetadataField = (index: number) => {
@@ -167,9 +160,13 @@ export default function PlaygroundPage() {
     newMeta.splice(index, 1)
     setCustomMetadata(newMeta)
   }
-  const updateMetadataField = (index: number, field: "key"|"value", val: string) => {
+  const updateMetadataField = (index: number, field: "key" | "value", val: string) => {
     const newMeta = [...customMetadata]
-    newMeta[index][field] = val
+    if (field === "key") {
+      newMeta[index][field] = val.toLowerCase().replace(/[^a-z0-9_]/g, '')
+    } else {
+      newMeta[index][field] = val
+    }
     setCustomMetadata(newMeta)
   }
 
@@ -311,35 +308,35 @@ export default function PlaygroundPage() {
               <div className="flex flex-col sm:flex-row gap-3">
                 <div className="sm:w-1/3">
                   <Select value={selectedEndpoint.id} onValueChange={handleEndpointChange}>
-                  <SelectTrigger className="w-full bg-background shadow-none border-border">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {endpoints.map(ep => (
-                      <SelectItem key={ep.id} value={ep.id}>
-                        <div className="flex items-center gap-3">
-                          <span className={cn(
-                            "w-12 text-[10px] font-bold tracking-wider",
-                            ep.method === "GET" ? "text-blue-500" : ep.method === "POST" ? "text-emerald-500" : "text-red-500"
-                          )}>
-                            {ep.method}
-                          </span>
-                          <span>{ep.name}</span>
-                        </div>
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                    <SelectTrigger className="w-full bg-background shadow-none border-border">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {endpoints.map(ep => (
+                        <SelectItem key={ep.id} value={ep.id}>
+                          <div className="flex items-center gap-3">
+                            <span className={cn(
+                              "w-12 text-[10px] font-bold tracking-wider",
+                              ep.method === "GET" ? "text-blue-500" : ep.method === "POST" ? "text-emerald-500" : "text-red-500"
+                            )}>
+                              {ep.method}
+                            </span>
+                            <span>{ep.name}</span>
+                          </div>
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
                 {/* Minimal URL Bar */}
                 <div className="flex-1 flex items-center rounded-lg border border-border bg-muted/30 px-3 py-1.5 shadow-sm overflow-hidden">
-                  <Badge 
-                    variant="outline" 
+                  <Badge
+                    variant="outline"
                     className={cn(
                       "px-2 py-0.5 rounded-md text-[10px] uppercase font-bold border-0 shrink-0",
-                      selectedEndpoint.method === "GET" ? "bg-blue-500/10 text-blue-500" : 
-                      selectedEndpoint.method === "POST" ? "bg-emerald-500/10 text-emerald-500" : 
-                      "bg-red-500/10 text-red-500"
+                      selectedEndpoint.method === "GET" ? "bg-blue-500/10 text-blue-500" :
+                        selectedEndpoint.method === "POST" ? "bg-emerald-500/10 text-emerald-500" :
+                          "bg-red-500/10 text-red-500"
                     )}
                   >
                     {selectedEndpoint.method}
@@ -462,71 +459,41 @@ export default function PlaygroundPage() {
             {/* Context Scope explicitly for POST methods */}
             {selectedEndpoint.method === "POST" && (
               <div className="space-y-3 rounded-lg border border-border bg-muted/20 p-4">
-                <Label className="text-xs font-semibold text-primary">Context Scope (Metadata Filtering)</Label>
-                <div className="grid gap-3 sm:grid-cols-3">
-                  <div className="space-y-1">
-                    <Label className="text-[10px] text-muted-foreground uppercase tracking-wider">User ID</Label>
-                    <Input
-                      value={scopeUserId}
-                      onChange={(e) => setScopeUserId(e.target.value)}
-                      placeholder="e.g. user_123"
-                      className="font-mono text-xs h-8"
-                    />
-                  </div>
-                  <div className="space-y-1">
-                    <Label className="text-[10px] text-muted-foreground uppercase tracking-wider">Agent ID</Label>
-                    <Input
-                      value={scopeAgentId}
-                      onChange={(e) => setScopeAgentId(e.target.value)}
-                      placeholder="e.g. support_bot"
-                      className="font-mono text-xs h-8"
-                    />
-                  </div>
-                  <div className="space-y-1">
-                    <Label className="text-[10px] text-muted-foreground uppercase tracking-wider">Run ID</Label>
-                    <Input
-                      value={scopeRunId}
-                      onChange={(e) => setScopeRunId(e.target.value)}
-                      placeholder="e.g. session_99"
-                      className="font-mono text-xs h-8"
-                    />
-                  </div>
+                <div className="flex items-center justify-between mb-2">
+                  <Label className="text-[10px] text-muted-foreground uppercase tracking-wider">Custom Context Tags</Label>
+                  <Button variant="ghost" size="sm" onClick={addMetadataField} className="h-6 px-2 text-[10px] gap-1">
+                    <Plus className="h-3 w-3" />
+                    Add Tag
+                  </Button>
                 </div>
-                
+
                 {/* Custom Metadata Builder */}
-                <div className="pt-2 border-t border-border mt-3">
-                  <div className="flex items-center justify-between mb-2">
-                    <Label className="text-[10px] text-muted-foreground uppercase tracking-wider mt-2">Custom Metadata</Label>
-                    <Button variant="ghost" size="sm" onClick={addMetadataField} className="h-6 px-2 text-[10px] gap-1 mt-2">
-                      <Plus className="h-3 w-3" />
-                      Add Field
-                    </Button>
-                  </div>
+                <div>
                   {customMetadata.length === 0 ? (
                     <div className="text-center py-4 border border-dashed border-border rounded-lg bg-background/50">
                       <p className="text-xs text-muted-foreground">No custom metadata.</p>
                     </div>
                   ) : (
                     <div className="space-y-2 pb-1">
-                      {customMetadata.map((meta, i) => (
+                      {customMetadata.map((metaAttr, i) => (
                         <div key={i} className="flex items-center gap-2">
                           <Input
                             placeholder="Key"
-                            value={meta.key}
+                            value={metaAttr.key}
                             onChange={(e) => updateMetadataField(i, "key", e.target.value)}
                             className="font-mono text-xs h-8 flex-1"
                           />
                           <span className="text-muted-foreground text-xs font-mono">=</span>
                           <Input
                             placeholder="Value"
-                            value={meta.value}
+                            value={metaAttr.value}
                             onChange={(e) => updateMetadataField(i, "value", e.target.value)}
                             className="font-mono text-xs h-8 flex-1"
                           />
-                          <Button 
-                            variant="ghost" 
-                            size="icon" 
-                            className="h-8 w-8 text-muted-foreground hover:text-destructive shrink-0" 
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8 text-muted-foreground hover:text-destructive shrink-0"
                             onClick={() => removeMetadataField(i)}
                           >
                             <Trash2 className="h-4 w-4" />
