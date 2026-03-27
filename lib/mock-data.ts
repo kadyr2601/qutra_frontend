@@ -14,7 +14,9 @@ export type GraphStatus = "connected" | "disconnected" | "syncing" | "error"
 export type KnowledgeBaseType = "pinecone" | "weaviate" | "qdrant" | "milvus" | "custom"
 export type KnowledgeBaseStatus = "active" | "inactive" | "indexing" | "error"
 export type FileParserType = "pdf" | "docx" | "csv" | "json" | "html" | "markdown" | "all"
-
+export type HardwareType = "cpu" | "gpu"
+export type RagType = "regular" | "knowledge_base"
+export type EmbeddingModelType = "local" | "openai" | "gemini"
 export interface GraphConnection {
   id: string
   name: string
@@ -55,6 +57,11 @@ export interface ApiKey {
   createdAt: Date
   lastUsed: Date
   requests: number
+  hardware: HardwareType
+  ragType: RagType
+  graphDbEnabled: boolean
+  embeddingModel: EmbeddingModelType
+  searchDepth: number
   graphConnections: GraphConnection[]
   knowledgeBases: KnowledgeBase[]
   fileParser: FileParserConfig
@@ -102,6 +109,11 @@ export const mockApiKeys: ApiKey[] = [
     createdAt: new Date("2024-02-01"),
     lastUsed: new Date("2024-03-20"),
     requests: 45230,
+    hardware: "gpu",
+    ragType: "knowledge_base",
+    graphDbEnabled: true,
+    embeddingModel: "openai",
+    searchDepth: 2,
     graphConnections: [
       {
         id: "graph_1",
@@ -144,6 +156,11 @@ export const mockApiKeys: ApiKey[] = [
     createdAt: new Date("2024-02-15"),
     lastUsed: new Date("2024-03-19"),
     requests: 12450,
+    hardware: "cpu",
+    ragType: "regular",
+    graphDbEnabled: false,
+    embeddingModel: "local",
+    searchDepth: 1,
     graphConnections: [],
     knowledgeBases: [
       {
@@ -174,6 +191,11 @@ export const mockApiKeys: ApiKey[] = [
     createdAt: new Date("2024-03-01"),
     lastUsed: new Date("2024-03-18"),
     requests: 3200,
+    hardware: "cpu",
+    ragType: "regular",
+    graphDbEnabled: false,
+    embeddingModel: "gemini",
+    searchDepth: 3,
     graphConnections: [],
     knowledgeBases: [],
     fileParser: {

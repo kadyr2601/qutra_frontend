@@ -8,13 +8,6 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
 import { Separator } from "@/components/ui/separator"
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select"
 import { useAuth } from "@/lib/auth-context"
 
 export default function SettingsPage() {
@@ -33,12 +26,6 @@ export default function SettingsPage() {
     weeklyReports: true,
     apiAlerts: true,
     marketingEmails: false,
-  })
-
-  const [apiSettings, setApiSettings] = useState({
-    defaultModel: "text-embedding-3-small",
-    maxTokens: "8192",
-    timeout: "30",
   })
 
   const handleSave = async () => {
@@ -104,68 +91,6 @@ export default function SettingsPage() {
               value={profile.company}
               onChange={(e) => setProfile({ ...profile, company: e.target.value })}
             />
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* API Settings */}
-      <Card>
-        <CardHeader>
-          <CardTitle>API Configuration</CardTitle>
-          <CardDescription>Default settings for API requests</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="grid gap-4 sm:grid-cols-3">
-            <div className="space-y-2">
-              <Label htmlFor="model">Embedding Model</Label>
-              <Select
-                value={apiSettings.defaultModel}
-                onValueChange={(value) => setApiSettings({ ...apiSettings, defaultModel: value })}
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="text-embedding-3-small">text-embedding-3-small</SelectItem>
-                  <SelectItem value="text-embedding-3-large">text-embedding-3-large</SelectItem>
-                  <SelectItem value="text-embedding-ada-002">text-embedding-ada-002</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="maxTokens">Max Tokens</Label>
-              <Select
-                value={apiSettings.maxTokens}
-                onValueChange={(value) => setApiSettings({ ...apiSettings, maxTokens: value })}
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="2048">2,048</SelectItem>
-                  <SelectItem value="4096">4,096</SelectItem>
-                  <SelectItem value="8192">8,192</SelectItem>
-                  <SelectItem value="16384">16,384</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="timeout">Request Timeout (s)</Label>
-              <Select
-                value={apiSettings.timeout}
-                onValueChange={(value) => setApiSettings({ ...apiSettings, timeout: value })}
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="10">10 seconds</SelectItem>
-                  <SelectItem value="30">30 seconds</SelectItem>
-                  <SelectItem value="60">60 seconds</SelectItem>
-                  <SelectItem value="120">120 seconds</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
           </div>
         </CardContent>
       </Card>
