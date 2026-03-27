@@ -45,26 +45,27 @@ export interface FileParserConfig {
   enabled: boolean
   supportedTypes: FileParserType[]
   maxFileSizeMB: number
-  chunkSize: number
-  chunkOverlap: number
+  chunkSize: number;
+  chunkOverlap: number;
 }
 
 export interface ApiKey {
-  id: string
-  name: string
-  key: string
-  maskedKey: string
-  createdAt: Date
-  lastUsed: Date
-  requests: number
-  hardware: HardwareType
-  ragType: RagType
-  graphDbEnabled: boolean
-  embeddingModel: EmbeddingModelType
-  searchDepth: number
-  graphConnections: GraphConnection[]
-  knowledgeBases: KnowledgeBase[]
-  fileParser: FileParserConfig
+  id: string;
+  name: string;
+  key: string;
+  maskedKey: string;
+  createdAt: Date;
+  lastUsed: Date;
+  requests: number;
+  hardware: HardwareType;
+  ragType: RagType;
+  graphDbEnabled: boolean;
+  embeddingModel: EmbeddingModelType;
+  searchDepth: number;
+  graphConnections: any[];
+  knowledgeBases: any[];
+  fileParser: FileParserConfig;
+  requiredMetadata?: string[];
 }
 
 export const supportedGraphDBs = [
@@ -147,6 +148,7 @@ export const mockApiKeys: ApiKey[] = [
       chunkSize: 1000,
       chunkOverlap: 200,
     },
+    requiredMetadata: ["agent_id", "environment"],
   },
   {
     id: "key_2",

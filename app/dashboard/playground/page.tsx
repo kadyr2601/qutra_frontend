@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useRef } from "react"
+import { useState, useRef, useEffect } from "react"
 import {
   Play,
   Copy,
@@ -11,6 +11,8 @@ import {
   ChevronDown,
   Loader2,
   AlertCircle,
+  Plus,
+  Trash2,
 } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -18,7 +20,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Badge } from "@/components/ui/badge"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+
 import {
   Select,
   SelectContent,
@@ -51,7 +53,6 @@ const endpoints: Endpoint[] = [
   { id: "get", name: "Get Memory", method: "GET", path: "/v1/memories/{id}", description: "Retrieve a specific memory" },
   { id: "list", name: "List Memories", method: "GET", path: "/v1/memories", description: "List all memories for a user" },
   { id: "delete", name: "Delete Memory", method: "DELETE", path: "/v1/memories/{id}", description: "Remove a memory" },
-  { id: "upload", name: "Upload File", method: "POST", path: "/v1/files/upload", description: "Upload and parse a document", supportsFile: true },
 ]
 
 const defaultBodies: Record<string, string> = {
@@ -59,22 +60,15 @@ const defaultBodies: Record<string, string> = {
     messages: [
       { role: "user", content: "I prefer dark mode interfaces" },
       { role: "assistant", content: "Got it, I'll remember that preference." }
-    ],
-    user_id: "user_123"
+    ]
   }, null, 2),
   search: JSON.stringify({
     query: "What are the user preferences?",
-    user_id: "user_123",
     limit: 5
   }, null, 2),
   get: "",
   list: "",
   delete: "",
-  upload: JSON.stringify({
-    user_id: "user_123",
-    chunk_size: 1000,
-    chunk_overlap: 200
-  }, null, 2),
 }
 
 export default function PlaygroundPage() {
@@ -82,7 +76,7 @@ export default function PlaygroundPage() {
   const [selectedEndpoint, setSelectedEndpoint] = useState(endpoints[0])
   const [requestBody, setRequestBody] = useState(defaultBodies.add)
   const [pathParams, setPathParams] = useState<Record<string, string>>({ id: "mem_001" })
-  const [queryParams, setQueryParams] = useState<Record<string, string>>({ user_id: "user_123", limit: "10" })
+  const [queryParams, setQueryParams] = useState<Record<string, string>>({ limit: "10" })
   const [response, setResponse] = useState<string | null>(null)
   const [statusCode, setStatusCode] = useState<number | null>(null)
   const [latency, setLatency] = useState<number | null>(null)
@@ -90,6 +84,10 @@ export default function PlaygroundPage() {
   const [copied, setCopied] = useState<string | null>(null)
   const [uploadedFile, setUploadedFile] = useState<File | null>(null)
   const [showAdvanced, setShowAdvanced] = useState(false)
+  const [scopeUserId, setScopeUserId] = useState("")
+  const [scopeAgentId, setScopeAgentId] = useState("")
+  const [scopeRunId, setScopeRunId] = useState("")
+  const [customMetadata, setCustomMetadata] = useState<{key: string, value: string}[]>([])
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   const handleEndpointChange = (endpointId: string) => {
@@ -104,8 +102,8 @@ export default function PlaygroundPage() {
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
-    if (file) {
-      setUploadedFile(file)
+    if (e.target.files) {
+      setUploadedFile(e.target.files[0])
     }
   }
 
@@ -114,6 +112,65 @@ export default function PlaygroundPage() {
     if (fileInputRef.current) {
       fileInputRef.current.value = ""
     }
+  }
+
+  // Auto-inject context scope and dynamic metadata into request body when inputs change
+  useEffect(() => {
+    if (selectedEndpoint.method !== "POST") return
+    try {
+      const parsed = JSON.parse(requestBody)
+      let modified = false
+      
+      // Handle Core Scope
+      if (scopeUserId && parsed.user_id !== scopeUserId) { parsed.user_id = scopeUserId; modified = true }
+      if (!scopeUserId && parsed.user_id) { delete parsed.user_id; modified = true }
+      
+      if (scopeAgentId && parsed.agent_id !== scopeAgentId) { parsed.agent_id = scopeAgentId; modified = true }
+      if (!scopeAgentId && parsed.agent_id) { delete parsed.agent_id; modified = true }
+      
+      if (scopeRunId && parsed.run_id !== scopeRunId) { parsed.run_id = scopeRunId; modified = true }
+      if (!scopeRunId && parsed.run_id) { delete parsed.run_id; modified = true }
+      
+      // Handle Custom Metadata
+      const validMetaPairs = customMetadata.filter(m => m.key.trim() !== "")
+      if (validMetaPairs.length > 0) {
+        const newMeta: Record<string, any> = {}
+        validMetaPairs.forEach(m => {
+          // Attempt to parse numbers/booleans if appropriate, else keep as string
+          let val: any = m.value
+          if (val === "true") val = true
+          else if (val === "false") val = false
+          else if (!isNaN(Number(val)) && val.trim() !== "") val = Number(val)
+          newMeta[m.key.trim()] = val
+        })
+        
+        if (JSON.stringify(parsed.metadata) !== JSON.stringify(newMeta)) {
+          parsed.metadata = newMeta
+          modified = true
+        }
+      } else if (parsed.metadata) {
+        delete parsed.metadata
+        modified = true
+      }
+      
+      if (modified) {
+        setRequestBody(JSON.stringify(parsed, null, 2))
+      }
+    } catch (e) {
+      // ignore invalid json while user is typing
+    }
+  }, [scopeUserId, scopeAgentId, scopeRunId, customMetadata, selectedEndpoint.method])
+
+  const addMetadataField = () => setCustomMetadata([...customMetadata, { key: "", value: "" }])
+  const removeMetadataField = (index: number) => {
+    const newMeta = [...customMetadata]
+    newMeta.splice(index, 1)
+    setCustomMetadata(newMeta)
+  }
+  const updateMetadataField = (index: number, field: "key"|"value", val: string) => {
+    const newMeta = [...customMetadata]
+    newMeta[index][field] = val
+    setCustomMetadata(newMeta)
   }
 
   const handleSend = async () => {
@@ -135,8 +192,8 @@ export default function PlaygroundPage() {
         mockResponse = {
           id: `mem_${Date.now().toString(36)}`,
           memory: "User prefers dark mode interfaces",
-          user_id: "user_123",
           created_at: new Date().toISOString(),
+          ...(uploadedFile ? { metadata: { attached_file: uploadedFile.name, parsed: true } } : {})
         }
         status = 201
         break
@@ -145,7 +202,6 @@ export default function PlaygroundPage() {
           results: mockMemories.slice(0, 3).map((m, i) => ({
             id: m.id,
             memory: m.content,
-            user_id: m.userId,
             score: Number((0.95 - i * 0.1).toFixed(2)),
             created_at: m.createdAt.toISOString(),
           }))
@@ -182,22 +238,7 @@ export default function PlaygroundPage() {
       case "delete":
         mockResponse = { success: true, deleted_id: pathParams.id }
         break
-      case "upload":
-        if (uploadedFile) {
-          mockResponse = {
-            file_id: `file_${Date.now().toString(36)}`,
-            filename: uploadedFile.name,
-            size_bytes: uploadedFile.size,
-            chunks_created: Math.ceil(uploadedFile.size / 1000),
-            memories_added: Math.ceil(uploadedFile.size / 500),
-            status: "processed",
-          }
-          status = 201
-        } else {
-          mockResponse = { error: "No file provided" }
-          status = 400
-        }
-        break
+
       default:
         mockResponse = { error: "Unknown endpoint" }
         status = 400
@@ -227,122 +268,7 @@ export default function PlaygroundPage() {
     return `${baseUrl}${path}`
   }
 
-  const generateCurl = () => {
-    let curl = `curl -X ${selectedEndpoint.method} "${getFullUrl()}" \\\n`
-    curl += `  -H "Authorization: Token ${selectedKey.key}" \\\n`
-    
-    if (selectedEndpoint.method === "POST" && !selectedEndpoint.supportsFile) {
-      curl += `  -H "Content-Type: application/json" \\\n`
-      curl += `  -d '${requestBody.replace(/\n/g, "")}'`
-    } else if (selectedEndpoint.supportsFile && uploadedFile) {
-      curl += `  -F "file=@${uploadedFile.name}" \\\n`
-      curl += `  -F "user_id=user_123"`
-    } else if (selectedEndpoint.method === "POST") {
-      curl += `  -H "Content-Type: application/json" \\\n`
-      curl += `  -d '${requestBody.replace(/\n/g, "")}'`
-    }
-    
-    return curl
-  }
 
-  const generatePython = () => {
-    let code = `from mem0 import MemoryClient\n\n`
-    code += `client = MemoryClient(api_key="${selectedKey.key}")\n\n`
-
-    switch (selectedEndpoint.id) {
-      case "add":
-        code += `# Add a memory from conversation\n`
-        code += `messages = [\n`
-        code += `    {"role": "user", "content": "I prefer dark mode interfaces"},\n`
-        code += `    {"role": "assistant", "content": "Got it, I'll remember that."}\n`
-        code += `]\n`
-        code += `result = client.add(messages, user_id="user_123")\n`
-        code += `print(result)`
-        break
-      case "search":
-        code += `# Search memories\n`
-        code += `results = client.search(\n`
-        code += `    query="What are the user preferences?",\n`
-        code += `    user_id="user_123",\n`
-        code += `    limit=5\n`
-        code += `)\n`
-        code += `print(results)`
-        break
-      case "get":
-        code += `# Get a specific memory\n`
-        code += `memory = client.get("${pathParams.id}")\n`
-        code += `print(memory)`
-        break
-      case "list":
-        code += `# List all memories for a user\n`
-        code += `memories = client.get_all(user_id="user_123")\n`
-        code += `print(memories)`
-        break
-      case "delete":
-        code += `# Delete a memory\n`
-        code += `client.delete("${pathParams.id}")\n`
-        code += `print("Memory deleted")`
-        break
-      case "upload":
-        code += `# Upload and parse a file\n`
-        code += `with open("${uploadedFile?.name || "document.pdf"}", "rb") as f:\n`
-        code += `    result = client.upload_file(f, user_id="user_123")\n`
-        code += `print(result)`
-        break
-    }
-
-    return code
-  }
-
-  const generateJS = () => {
-    let code = `import MemoryClient from 'mem0ai';\n\n`
-    code += `const client = new MemoryClient({ apiKey: '${selectedKey.key}' });\n\n`
-
-    switch (selectedEndpoint.id) {
-      case "add":
-        code += `// Add a memory from conversation\n`
-        code += `const messages = [\n`
-        code += `  { role: 'user', content: 'I prefer dark mode interfaces' },\n`
-        code += `  { role: 'assistant', content: "Got it, I'll remember that." }\n`
-        code += `];\n\n`
-        code += `const result = await client.add(messages, { user_id: 'user_123' });\n`
-        code += `console.log(result);`
-        break
-      case "search":
-        code += `// Search memories\n`
-        code += `const results = await client.search('What are the user preferences?', {\n`
-        code += `  user_id: 'user_123',\n`
-        code += `  limit: 5\n`
-        code += `});\n`
-        code += `console.log(results);`
-        break
-      case "get":
-        code += `// Get a specific memory\n`
-        code += `const memory = await client.get('${pathParams.id}');\n`
-        code += `console.log(memory);`
-        break
-      case "list":
-        code += `// List all memories for a user\n`
-        code += `const memories = await client.getAll({ user_id: 'user_123' });\n`
-        code += `console.log(memories);`
-        break
-      case "delete":
-        code += `// Delete a memory\n`
-        code += `await client.delete('${pathParams.id}');\n`
-        code += `console.log('Memory deleted');`
-        break
-      case "upload":
-        code += `// Upload and parse a file\n`
-        code += `const formData = new FormData();\n`
-        code += `formData.append('file', fileInput.files[0]);\n`
-        code += `formData.append('user_id', 'user_123');\n\n`
-        code += `const result = await client.uploadFile(formData);\n`
-        code += `console.log(result);`
-        break
-    }
-
-    return code
-  }
 
   const hasFileParser = selectedKey.fileParser?.enabled
   const showFileUpload = selectedEndpoint.supportsFile && hasFileParser
@@ -376,15 +302,15 @@ export default function PlaygroundPage() {
         </Select>
       </div>
 
-      <div className="grid gap-6 lg:grid-cols-2">
+      <div className="grid gap-6 lg:grid-cols-2 h-[calc(100vh-12rem)] min-h-[650px]">
         {/* Request Panel */}
-        <Card>
-          <CardHeader className="pb-4">
-            <div className="flex flex-col gap-4">
-              {/* Clean Endpoint Selector */}
-              <div className="flex flex-col gap-1.5">
-                <Label className="text-xs text-muted-foreground">Endpoint</Label>
-                <Select value={selectedEndpoint.id} onValueChange={handleEndpointChange}>
+        <Card className="flex flex-col">
+          <CardHeader className="pb-4 shrink-0">
+            <div className="flex flex-col gap-3">
+              {/* Endpoint Row */}
+              <div className="flex flex-col sm:flex-row gap-3">
+                <div className="sm:w-1/3">
+                  <Select value={selectedEndpoint.id} onValueChange={handleEndpointChange}>
                   <SelectTrigger className="w-full bg-background shadow-none border-border">
                     <SelectValue />
                   </SelectTrigger>
@@ -404,31 +330,51 @@ export default function PlaygroundPage() {
                     ))}
                   </SelectContent>
                 </Select>
-                <p className="text-xs text-muted-foreground mt-1">{selectedEndpoint.description}</p>
-              </div>
-
-              {/* Minimal URL Bar */}
-              <div className="flex items-center rounded-lg border border-border/60 bg-muted/30 p-1.5 shadow-sm">
-                <Badge 
-                  variant="outline" 
-                  className={cn(
-                    "px-2 py-0.5 rounded-md text-[10px] uppercase font-bold border-0",
-                    selectedEndpoint.method === "GET" ? "bg-blue-500/10 text-blue-500" : 
-                    selectedEndpoint.method === "POST" ? "bg-emerald-500/10 text-emerald-500" : 
-                    "bg-red-500/10 text-red-500"
-                  )}
-                >
-                  {selectedEndpoint.method}
-                </Badge>
-                <div className="flex-1 overflow-x-auto px-3">
-                  <code className="whitespace-nowrap font-mono text-xs text-foreground/80">
+                </div>
+                {/* Minimal URL Bar */}
+                <div className="flex-1 flex items-center rounded-lg border border-border bg-muted/30 px-3 py-1.5 shadow-sm overflow-hidden">
+                  <Badge 
+                    variant="outline" 
+                    className={cn(
+                      "px-2 py-0.5 rounded-md text-[10px] uppercase font-bold border-0 shrink-0",
+                      selectedEndpoint.method === "GET" ? "bg-blue-500/10 text-blue-500" : 
+                      selectedEndpoint.method === "POST" ? "bg-emerald-500/10 text-emerald-500" : 
+                      "bg-red-500/10 text-red-500"
+                    )}
+                  >
+                    {selectedEndpoint.method}
+                  </Badge>
+                  <code className="ml-3 truncate font-mono text-xs text-foreground/80">
                     {getFullUrl()}
                   </code>
                 </div>
               </div>
+              <p className="text-xs text-muted-foreground">{selectedEndpoint.description}</p>
             </div>
           </CardHeader>
-          <CardContent className="space-y-4">
+          <CardContent className="flex flex-col flex-1 gap-4 overflow-y-auto">
+            {/* Headers Preview */}
+            <div className="space-y-2 shrink-0">
+              <Label className="text-xs">Headers</Label>
+              <div className="rounded-lg border border-border bg-muted/10 p-3 space-y-2 font-mono text-xs">
+                <div className="flex items-start gap-4">
+                  <span className="text-foreground font-medium shrink-0 w-32">Authorization:</span>
+                  <span className="text-muted-foreground truncate">Bearer {selectedKey.key}</span>
+                </div>
+                {selectedEndpoint.method === "POST" && !uploadedFile && (
+                  <div className="flex items-start gap-4">
+                    <span className="text-foreground font-medium shrink-0 w-32">Content-Type:</span>
+                    <span className="text-muted-foreground">application/json</span>
+                  </div>
+                )}
+                {selectedEndpoint.method === "POST" && uploadedFile && (
+                  <div className="flex items-start gap-4">
+                    <span className="text-foreground font-medium shrink-0 w-32">Content-Type:</span>
+                    <span className="text-muted-foreground">multipart/form-data</span>
+                  </div>
+                )}
+              </div>
+            </div>
             {/* Path Params */}
             {selectedEndpoint.path.includes("{id}") && (
               <div className="space-y-2">
@@ -447,7 +393,7 @@ export default function PlaygroundPage() {
               <Collapsible open={showAdvanced} onOpenChange={setShowAdvanced}>
                 <CollapsibleTrigger asChild>
                   <Button variant="ghost" size="sm" className="gap-2 text-xs">
-                    <ChevronDown className={cn("h-3 w-3 transition-transform", showAdvanced && "rotate-180")} />
+                    <ChevronDown className={cn("h-3 w-3", showAdvanced && "rotate-180")} />
                     Query Parameters
                   </Button>
                 </CollapsibleTrigger>
@@ -456,7 +402,7 @@ export default function PlaygroundPage() {
                     <div className="space-y-1">
                       <Label className="text-xs">user_id</Label>
                       <Input
-                        value={queryParams.user_id}
+                        value={queryParams.user_id || ""}
                         onChange={(e) => setQueryParams({ ...queryParams, user_id: e.target.value })}
                         className="font-mono text-sm"
                       />
@@ -493,7 +439,7 @@ export default function PlaygroundPage() {
                   </div>
                 ) : (
                   <div
-                    className="flex cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed border-border p-6 transition-colors hover:border-muted-foreground/50 hover:bg-muted/30"
+                    className="flex cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed border-border p-6"
                     onClick={() => fileInputRef.current?.click()}
                   >
                     <Upload className="mb-2 h-8 w-8 text-muted-foreground" />
@@ -513,10 +459,90 @@ export default function PlaygroundPage() {
               </div>
             )}
 
+            {/* Context Scope explicitly for POST methods */}
+            {selectedEndpoint.method === "POST" && (
+              <div className="space-y-3 rounded-lg border border-border bg-muted/20 p-4">
+                <Label className="text-xs font-semibold text-primary">Context Scope (Metadata Filtering)</Label>
+                <div className="grid gap-3 sm:grid-cols-3">
+                  <div className="space-y-1">
+                    <Label className="text-[10px] text-muted-foreground uppercase tracking-wider">User ID</Label>
+                    <Input
+                      value={scopeUserId}
+                      onChange={(e) => setScopeUserId(e.target.value)}
+                      placeholder="e.g. user_123"
+                      className="font-mono text-xs h-8"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-[10px] text-muted-foreground uppercase tracking-wider">Agent ID</Label>
+                    <Input
+                      value={scopeAgentId}
+                      onChange={(e) => setScopeAgentId(e.target.value)}
+                      placeholder="e.g. support_bot"
+                      className="font-mono text-xs h-8"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-[10px] text-muted-foreground uppercase tracking-wider">Run ID</Label>
+                    <Input
+                      value={scopeRunId}
+                      onChange={(e) => setScopeRunId(e.target.value)}
+                      placeholder="e.g. session_99"
+                      className="font-mono text-xs h-8"
+                    />
+                  </div>
+                </div>
+                
+                {/* Custom Metadata Builder */}
+                <div className="pt-2 border-t border-border mt-3">
+                  <div className="flex items-center justify-between mb-2">
+                    <Label className="text-[10px] text-muted-foreground uppercase tracking-wider mt-2">Custom Metadata</Label>
+                    <Button variant="ghost" size="sm" onClick={addMetadataField} className="h-6 px-2 text-[10px] gap-1 mt-2">
+                      <Plus className="h-3 w-3" />
+                      Add Field
+                    </Button>
+                  </div>
+                  {customMetadata.length === 0 ? (
+                    <div className="text-center py-4 border border-dashed border-border rounded-lg bg-background/50">
+                      <p className="text-xs text-muted-foreground">No custom metadata.</p>
+                    </div>
+                  ) : (
+                    <div className="space-y-2 pb-1">
+                      {customMetadata.map((meta, i) => (
+                        <div key={i} className="flex items-center gap-2">
+                          <Input
+                            placeholder="Key"
+                            value={meta.key}
+                            onChange={(e) => updateMetadataField(i, "key", e.target.value)}
+                            className="font-mono text-xs h-8 flex-1"
+                          />
+                          <span className="text-muted-foreground text-xs font-mono">=</span>
+                          <Input
+                            placeholder="Value"
+                            value={meta.value}
+                            onChange={(e) => updateMetadataField(i, "value", e.target.value)}
+                            className="font-mono text-xs h-8 flex-1"
+                          />
+                          <Button 
+                            variant="ghost" 
+                            size="icon" 
+                            className="h-8 w-8 text-muted-foreground hover:text-destructive shrink-0" 
+                            onClick={() => removeMetadataField(i)}
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
             {/* Request Body */}
-            {selectedEndpoint.method === "POST" && !showFileUpload && (
+            {selectedEndpoint.method === "POST" && (
               <div className="space-y-2">
-                <Label className="text-xs">Request Body</Label>
+                <Label className="text-xs">Request Body (JSON)</Label>
                 <Textarea
                   value={requestBody}
                   onChange={(e) => setRequestBody(e.target.value)}
@@ -536,20 +562,25 @@ export default function PlaygroundPage() {
               </div>
             )}
 
-            <Button onClick={handleSend} disabled={isLoading} className="w-full">
-              {isLoading ? (
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              ) : (
-                <Play className="mr-2 h-4 w-4" />
-              )}
-              Send Request
-            </Button>
+            {/* Spacer */}
+            <div className="flex-1 min-h-[1rem]" />
+
+            <div className="shrink-0 mt-auto pt-2">
+              <Button onClick={handleSend} disabled={isLoading} className="w-full">
+                {isLoading ? (
+                  <Loader2 className="mr-2 h-4 w-4" />
+                ) : (
+                  <Play className="mr-2 h-4 w-4" />
+                )}
+                Send Request
+              </Button>
+            </div>
           </CardContent>
         </Card>
 
         {/* Response Panel */}
-        <Card>
-          <CardHeader className="pb-4">
+        <Card className="flex flex-col">
+          <CardHeader className="pb-4 shrink-0">
             <div className="flex items-center justify-between">
               <CardTitle className="text-base">Response</CardTitle>
               {statusCode !== null && (
@@ -562,10 +593,10 @@ export default function PlaygroundPage() {
               )}
             </div>
           </CardHeader>
-          <CardContent>
+          <CardContent className="flex-1 min-h-0 relative pb-6">
             {response ? (
-              <div className="relative">
-                <pre className="max-h-[400px] overflow-auto rounded-lg bg-muted p-4 font-mono text-sm">
+              <div className="absolute inset-x-6 inset-y-0 bottom-6">
+                <pre className="h-full overflow-auto rounded-lg bg-muted p-4 font-mono text-sm">
                   {response}
                 </pre>
                 <Button
@@ -582,7 +613,7 @@ export default function PlaygroundPage() {
                 </Button>
               </div>
             ) : (
-              <div className="flex h-[400px] items-center justify-center rounded-lg border border-dashed border-border">
+              <div className="absolute inset-x-6 inset-y-0 bottom-6 flex items-center justify-center rounded-lg border border-dashed border-border">
                 <p className="text-sm text-muted-foreground">Send a request to see the response</p>
               </div>
             )}
@@ -590,60 +621,7 @@ export default function PlaygroundPage() {
         </Card>
       </div>
 
-      {/* Code Examples */}
-      <Card>
-        <CardHeader className="pb-4">
-          <CardTitle className="text-base">Code Examples</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <Tabs defaultValue="curl">
-            <TabsList>
-              <TabsTrigger value="curl">cURL</TabsTrigger>
-              <TabsTrigger value="python">Python</TabsTrigger>
-              <TabsTrigger value="javascript">JavaScript</TabsTrigger>
-            </TabsList>
-            <TabsContent value="curl" className="relative mt-4">
-              <pre className="overflow-auto rounded-lg bg-muted p-4 font-mono text-sm">
-                {generateCurl()}
-              </pre>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="absolute right-2 top-2 h-8 w-8"
-                onClick={() => handleCopy(generateCurl(), "curl")}
-              >
-                {copied === "curl" ? <Check className="h-4 w-4 text-emerald-500" /> : <Copy className="h-4 w-4" />}
-              </Button>
-            </TabsContent>
-            <TabsContent value="python" className="relative mt-4">
-              <pre className="overflow-auto rounded-lg bg-muted p-4 font-mono text-sm">
-                {generatePython()}
-              </pre>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="absolute right-2 top-2 h-8 w-8"
-                onClick={() => handleCopy(generatePython(), "python")}
-              >
-                {copied === "python" ? <Check className="h-4 w-4 text-emerald-500" /> : <Copy className="h-4 w-4" />}
-              </Button>
-            </TabsContent>
-            <TabsContent value="javascript" className="relative mt-4">
-              <pre className="overflow-auto rounded-lg bg-muted p-4 font-mono text-sm">
-                {generateJS()}
-              </pre>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="absolute right-2 top-2 h-8 w-8"
-                onClick={() => handleCopy(generateJS(), "js")}
-              >
-                {copied === "js" ? <Check className="h-4 w-4 text-emerald-500" /> : <Copy className="h-4 w-4" />}
-              </Button>
-            </TabsContent>
-          </Tabs>
-        </CardContent>
-      </Card>
+
     </div>
   )
 }
